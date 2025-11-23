@@ -83,7 +83,7 @@ if dataset_choice == "Explore Advanced Datasets":
                 # set active dataset in session state and rerun
                 st.session_state["active_dataset"] = {"type": "advanced", "name": name, "path": path}
                 st.session_state["adv_chosen"] = name
-                st.experimental_rerun()
+                st.rerun()
         idx += 1
 
     # If already chosen earlier, show a note and proceed (we don't stop)
@@ -146,7 +146,7 @@ if dataset_choice == "Custom Dataset":
                     if st.button("Use uploaded dataset", key="use_custom"):
                         # set active dataset and rerun
                         st.session_state["active_dataset"] = {"type": "custom", "name": "custom_uploaded", "path": None}
-                        st.experimental_rerun()
+                        st.rerun()
             except Exception as e:
                 st.error("Error creating preview — check selected columns.")
 
@@ -197,7 +197,7 @@ st.markdown(f"**Active dataset:** `{active['type']}` — **{active['name']}**")
 if st.button("Reset dataset selection", key="reset_dataset"):
     st.session_state["active_dataset"] = None
     st.session_state["adv_chosen"] = None
-    st.experimental_rerun()
+    st.rerun()
 
 # -------------------------
 # Prepare arrays
