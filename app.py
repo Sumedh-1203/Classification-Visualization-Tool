@@ -32,7 +32,6 @@ def plot_preview_small(df, figsize=(2, 2), dotsize=8):
     fig, ax = plt.subplots(figsize=figsize)
     scatter = ax.scatter(df["x1"], df["x2"], c=df["label"], s=dotsize)
     ax.set_xticks([]); ax.set_yticks([])
-    plt.colorbar(scatter, ax=ax, label="label")
     st.pyplot(fig)
 
 # -------------------------
