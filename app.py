@@ -7,32 +7,92 @@ from metrics_utils import compute_metrics
 st.title("Classification Model Visualizer")
 
 # =========================================================
-# LOAD DATA
+# DATASET SELECTION
 # =========================================================
-df_train = pd.read_csv("Dataset2/train.csv")
-df_val   = pd.read_csv("Dataset2/val.csv")
-df_test  = pd.read_csv("Dataset2/test.csv")
+dataset_choice = st.sidebar.selectbox(
+    "Select Dataset",
+    ["Dataset1", "Dataset2", "Custom Dataset"],
+    key="dataset_choice"
+)
 
-X_train = df_train[['x1','x2']].values
-y_train = df_train['label'].values
-X_val   = df_val[['x1','x2']].values
-y_val   = df_val['label'].values
-X_test  = df_test[['x1','x2']].values
-y_test  = df_test['label'].values
+# =========================================================
+# LOAD BUILT-IN OR CUSTOM DATASET
+# =========================================================
+
+if dataset_choice in ["Dataset1", "Dataset2"]:
+    data_path = dataset_choice
+
+    df_train = pd.read_csv(f"{data_path}/train.csv")
+    df_test  = pd.read_csv(f"{data_path}/test.csv")
+    df_val   = pd.read_csv(f"{data_path}/val.csv")   # required for transforms even if not shown
+
+    x1_col, x2_col, label_col = "x1", "x2", "label"
+
+else:
+    st.sidebar.subheader("Upload Custom Dataset")
+
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload CSV (max 5 MB)",
+        type=["csv"],
+        key="custom_csv"
+    )
+
+    if uploaded_file is None:
+        st.warning("Upload a CSV file to proceed.")
+        st.stop()
+
+    # Check file size (uploaded_file.size is in bytes)
+    if uploaded_file.size > 5 * 1024 * 1024:
+        st.error("File too large! Maximum allowed size is 5 MB.")
+        st.stop()
+
+    # Read CSV
+    try:
+        df_all = pd.read_csv(uploaded_file)
+    except Exception:
+        st.error("Error reading CSV file. Ensure it is a valid CSV.")
+        st.stop()
+
+    # Column selection
+    st.sidebar.subheader("Select Columns")
+    x1_col = st.sidebar.selectbox("Select x1 column", df_all.columns, key="x1")
+    x2_col = st.sidebar.selectbox("Select x2 column", df_all.columns, key="x2")
+    label_col = st.sidebar.selectbox("Select output label column", df_all.columns, key="label")
+
+    # Drop NaN rows
+    df_all = df_all[[x1_col, x2_col, label_col]].dropna()
+
+    if df_all.empty:
+        st.error("Dataset has no valid rows after dropping NaN.")
+        st.stop()
+
+    # For custom dataset, train/test split 80-20
+    from sklearn.model_selection import train_test_split
+    df_train, df_test = train_test_split(df_all, test_size=0.2, random_state=42)
+    df_val = df_test.copy()   # placeholder, not used for accuracy display
+
+# Extract arrays
+X_train = df_train[[x1_col, x2_col]].values
+y_train = df_train[label_col].values
+X_test  = df_test[[x1_col, x2_col]].values
+y_test  = df_test[label_col].values
+X_val   = df_val[[x1_col, x2_col]].values
+y_val   = df_val[label_col].values
 
 # =========================================================
 # SIDEBAR — MODEL A SETTINGS
 # =========================================================
 st.sidebar.header("Model A – Settings")
 
-methodA = st.sidebar.selectbox("Choose Model A",
+methodA = st.sidebar.selectbox(
+    "Choose Model A",
     ["KNN",
      "Logistic Regression",
      "MLFFNN-Based Classifier",
      "SVM (Linear Kernel)",
      "SVM (Polynomial Kernel)",
      "SVM (RBF Kernel)"],
-     key="modelA"
+    key="modelA"
 )
 
 paramsA: dict = {}
@@ -73,19 +133,20 @@ compare = st.sidebar.checkbox("Compare with Model B?", key="compare")
 if compare:
     st.sidebar.header("Model B – Settings")
 
-    methodB = st.sidebar.selectbox("Choose Model B",
+    methodB = st.sidebar.selectbox(
+        "Choose Model B",
         ["KNN",
          "Logistic Regression",
          "MLFFNN-Based Classifier",
          "SVM (Linear Kernel)",
          "SVM (Polynomial Kernel)",
          "SVM (RBF Kernel)"],
-         key="modelB"
+        key="modelB"
     )
 
     paramsB = {}
 
-    # ---------------- Hyperparameters for Model B ----------------
+    # Hyperparams for Model B
     if methodB == "KNN":
         paramsB["k"] = st.sidebar.selectbox("K (Model B)", [1,5,9], key="B_k")
 
@@ -114,9 +175,9 @@ if compare:
 # RUN TRAINING
 # =========================================================
 if st.sidebar.button("Run Classification", key="run"):
-    
+
     # =========================================================
-    # MODEL A — TRAIN
+    # MODEL A
     # =========================================================
     modelA, XA_train, XA_test, XA_all, polyA, scalerA = train_model(
         methodA, paramsA, X_train, y_train, X_test, X_val
@@ -126,32 +187,18 @@ if st.sidebar.button("Run Classification", key="run"):
     y_pred_A_test  = modelA.predict(XA_test)
 
     fmt = lambda x: f"{x*100:.4f}%"
+    trainAccA = fmt((y_pred_A_train == y_train).mean())
+    testAccA  = fmt((y_pred_A_test  == y_test).mean())
 
-    trainA = compute_metrics(y_train, y_pred_A_train)
-    testA  = compute_metrics(y_test,  y_pred_A_test)
-
-    # =========================================================
-    # SIDE-BY-SIDE DISPLAY: MODEL A & MODEL B
-    # =========================================================
+    # SIDE-BY-SIDE VIEW
     colA, colB = st.columns(2)
 
-    # ------------- MODEL A COLUMN -------------
+    # -------- MODEL A (LEFT) --------
     with colA:
-        st.subheader("Model A — Metrics")
+        st.subheader("Model A — Accuracy")
         st.table({
-            "Metric": ["Accuracy", "Precision", "Recall", "F1 Score"],
-            "Train": [
-                fmt(trainA["Accuracy"]),
-                fmt(trainA["Precision"]),
-                fmt(trainA["Recall"]),
-                fmt(trainA["F1 Score"])
-            ],
-            "Test": [
-                fmt(testA["Accuracy"]),
-                fmt(testA["Precision"]),
-                fmt(testA["Recall"]),
-                fmt(testA["F1 Score"])
-            ]
+            "Metric": ["Train Accuracy", "Test Accuracy"],
+            "Value": [trainAccA, testAccA]
         })
 
         st.subheader("Model A — Decision Boundary")
@@ -165,10 +212,11 @@ if st.sidebar.button("Run Classification", key="run"):
             scaler=scalerA
         ))
 
-    # ------------- MODEL B COLUMN (IF ENABLED) -------------
+    # =========================================================
+    # MODEL B
+    # =========================================================
     if compare and methodB is not None:
-        
-        # Train Model B
+
         modelB, XB_train, XB_test, XB_all, polyB, scalerB = train_model(
             methodB, paramsB, X_train, y_train, X_test, X_val
         )
@@ -176,25 +224,14 @@ if st.sidebar.button("Run Classification", key="run"):
         y_pred_B_train = modelB.predict(XB_train)
         y_pred_B_test  = modelB.predict(XB_test)
 
-        trainB = compute_metrics(y_train, y_pred_B_train)
-        testB  = compute_metrics(y_test,  y_pred_B_test)
+        trainAccB = fmt((y_pred_B_train == y_train).mean())
+        testAccB  = fmt((y_pred_B_test  == y_test).mean())
 
         with colB:
-            st.subheader("Model B — Metrics")
+            st.subheader("Model B — Accuracy")
             st.table({
-                "Metric": ["Accuracy", "Precision", "Recall", "F1 Score"],
-                "Train": [
-                    fmt(trainB["Accuracy"]),
-                    fmt(trainB["Precision"]),
-                    fmt(trainB["Recall"]),
-                    fmt(trainB["F1 Score"])
-                ],
-                "Test": [
-                    fmt(testB["Accuracy"]),
-                    fmt(testB["Precision"]),
-                    fmt(testB["Recall"]),
-                    fmt(testB["F1 Score"])
-                ]
+                "Metric": ["Train Accuracy", "Test Accuracy"],
+                "Value": [trainAccB, testAccB]
             })
 
             st.subheader("Model B — Decision Boundary")
@@ -208,20 +245,9 @@ if st.sidebar.button("Run Classification", key="run"):
                 scaler=scalerB
             ))
 
-        # ------------- COMPARISON TABLE -------------
-        st.subheader("Model Comparison — Test Set")
+        # FINAL COMPARISON
+        st.subheader("Model Comparison — Test Accuracy")
         st.table({
-            "Metric": ["Accuracy", "Precision", "Recall", "F1 Score"],
-            "Model A": [
-                fmt(testA["Accuracy"]),
-                fmt(testA["Precision"]),
-                fmt(testA["Recall"]),
-                fmt(testA["F1 Score"])
-            ],
-            "Model B": [
-                fmt(testB["Accuracy"]),
-                fmt(testB["Precision"]),
-                fmt(testB["Recall"]),
-                fmt(testB["F1 Score"])
-            ]
+            "Metric": ["Model A Test Accuracy", "Model B Test Accuracy"],
+            "Value": [testAccA, testAccB]
         })
